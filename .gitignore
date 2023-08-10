@@ -1,0 +1,21 @@
+## gitignore file ##
+
+# test directory
+tests/
+
+# distribution directory
+dist/
+
+# environment variables
+.env
+
+# virtual environment
+venv/
+activate
+
+# python cache
+chianode/__pycache__/
+
+# temp files
+**/*~
+**/#*#
