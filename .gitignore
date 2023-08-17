@@ -1,7 +1,7 @@
 ## gitignore file ##
 
-# test files
-test_*.py
+# non-pytest test files
+check_*.py
 
 # distribution directory
 dist/
