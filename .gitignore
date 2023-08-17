@@ -1,8 +1,5 @@
 ## gitignore file ##
 
-# test directory
-tests/
-
 # test files
 test_*.py
 
@@ -17,8 +14,7 @@ venv/
 activate
 
 # python cache
-chianode/__pycache__/
-__pycache__/
+**/__pycache__/
 
 # temp files
 **/*~
