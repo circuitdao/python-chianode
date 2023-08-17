@@ -1,30 +1,6 @@
 import httpx
 import json
-from .constants import GET, POST, MAINNET, LOCALHOST, MOJONODE, CHIA_DIRECTORY
-
-
-MOJONODE_RPC_ENDPOINTS = [
-    "/get_coin_record_by_name",
-    "/get_coin_records_by_name",
-    "/get_coin_records_by_parent_ids",
-    "/get_coin_records_by_puzzle_hash",
-    "/get_coin_records_by_puzzle_hashes",
-    "/get_coin_records_by_hint",
-    "/get_block_record_by_height",
-    "/get_block_record",
-    "/get_block_records",
-    "/get_block",
-    "/get_blocks",
-    "/get_additions_and_removals",
-    "/get_blockchain_state",
-    "/get_puzzle_and_solution",
-    "/get_block_spends",
-    "/get_all_mempool_tx_ids",
-    "/get_mempool_item_by_tx_id",
-    "/get_initial_freeze_period",
-    "/healthz",
-    "/push_tx"
-]
+from .constants import *
 
 
 class RpcClient():
@@ -54,10 +30,10 @@ class RpcClient():
 
             if not (height_start >= 0 and height_end >= 0):
                 raise ValueError("Block heights must be non-negative")
-            elif height_start > height_end:
-                raise ValueError("Start block height must not be greater than end block height")
-            elif self.base_url == MOJONODE and height_end - height_start > 100:
-                raise ValueError("Block height difference must not be greater than 100 when querying Mojonode")
+            elif height_start >= height_end:
+                raise ValueError("Start block height must be less than end block height")
+            elif self.base_url == MOJONODE and height_end - height_start > MOJONODE_MAX_HEIGHT_DIFF:
+                raise ValueError(f"Block height difference must not be greater than {MOJONODE_MAX_HEIGHT_DIFF} when querying Mojonode")
 
             
     def _add_network_param(self, params, no_network):
@@ -88,9 +64,10 @@ class RpcClient():
     ### Endpoints ###
     #
     # In all of the requests below:
-    #   height_start and height_end must be non-negative integers with 0 <= height_end - height_start <= 100
+    #   height_start and height_end must be non-negative integers with:
+    #     1 <= height_end - height_start <= constants.MOJONODE_MAX_HEIGHT_DIFF
     #   puzzle_hash is a bytes32 hex encoded string
-    #   page is the page number to be returned. Mojonode paginates with 50 items per page
+    #   page is the page number to be returned. Mojonode paginates with constants.MOJONODE_PAGE_SIZE items per page
 
     async def get_coin_record_by_name(self, coin_id):
 
