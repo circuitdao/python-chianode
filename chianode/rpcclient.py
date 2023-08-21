@@ -1,30 +1,75 @@
+import os
 import httpx
+import yaml
 import json
-from .constants import *
+import logging
+from datetime import datetime
+from .constants import NEWLINE, LOCALHOST, MOJONODE, MAINNET, POST, MOJONODE_MAX_HEIGHT_DIFF, MOJONODE_RPC_ENDPOINTS
+
+
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
 class RpcClient():
+    """Client class to query Chia nodes via RPCs.
 
-    def __init__(self, base_url=LOCALHOST, network=MAINNET, debug=False, timeout=5): # 5 second timeout is httpx default
-        self.base_url = base_url
-        self.network = network
+    For a documentation of the official Chia RPCs see: https://docs.chia.net/full-node-rpc/
+    For a documentation of Mojonode RPCs see: https://api.mojonode.com/docs
+    
+    There are conventions for certain public method arguments of this class:
+      * height_start and height_end must be non-negative integers that satify
+         1 <= height_end - height_start <= constants.MOJONODE_MAX_HEIGHT_DIFF
+      * The block at height_start is included, the block at height_end is excluded
+      * puzzle_hash, coin_id, hint, and header_hash are 32-byte hex encoded strings
+      * puzzle_hashes, coin_ids, and parent_ids are lists of 32-byte hex encoded strings
+      * include_spent_coins is a boolean value indicating whether to include spent coins
+      * When querying Mojonode, page is the number of the page to be returned, starting from 1.
+        Mojonode paginates data with constants.MOJONODE_PAGE_SIZE items per page.
+        The page paramenter is ignored when querying nodes that don't support pagination.
+    
+    Note that results returned by Mojonode are not sorted.
+    """
+
+    def __init__(self, base_url=LOCALHOST, network=MAINNET, timeout=5): # 5 second timeout is httpx default
+        """Initialize an RpcClient instance.
         
+        Keywork arguments:
+        base_url -- the URL (exluding endpoint) to query
+        network -- the network to query
+        timeout -- timeout in seconds for requests to the node
+        """
+
+        self.base_url = base_url
+        if os.getenv('CHIA_ROOT') is None: raise NameError("Environment variable CHIA_ROOT not set")
+        with open(os.getenv('CHIA_ROOT') + "/config/config.yaml", "r") as file:
+            config_file = yaml.safe_load(file)
+            selected_network = config_file["full_node"]["selected_network"]
+        if selected_network == network:
+            self.network = network
+        else:
+            raise ValueError(f"Please connect the node running on localhost to {network}")
         if self.base_url == LOCALHOST:
             self.headers = {"Content-Type": "application/json"}
-            self.cert = (f"{CHIA_DIRECTORY}/{self.network}/config/ssl/full_node/private_full_node.crt", f"{CHIA_DIRECTORY}/{self.network}/config/ssl/full_node/private_full_node.key")
+            chia_root = "/".join(os.getenv('CHIA_ROOT').split("/")[:-1])
+            self.cert = (f"{chia_root}/{self.network}/config/ssl/full_node/private_full_node.crt", f"{chia_root}/{self.network}/config/ssl/full_node/private_full_node.key")
         elif self.base_url == MOJONODE:
             self.headers = {"accept": "application/json", "Content-Type": "application/json"}
             self.cert = None
         else:
             raise ValueError(f"Unknown node provider. Base URL: {base_url}")
-        
-        self.debug = debug
+
         self.timeout = timeout
 
         self.client = httpx.AsyncClient(base_url=self.base_url, http2=True, timeout=self.timeout, cert=self.cert, verify=False)
 
 
     def _check_heights(self, height_start, height_end):
+        """Check that start and end block heights are valid and consistent.
+
+        Arguments:
+        height_start -- starting block height (incl)
+        height_end -- ending blok height (excl)
+        """
         
         if not (height_start is None and height_end is None):
 
@@ -37,38 +82,52 @@ class RpcClient():
 
             
     def _add_network_param(self, params, no_network):
+        """Add a network field to a dict of parameters.
+
+        Arguments:
+        params -- dict of parameters
+        no_network -- boolean indicating whether to add a network field to params
+        """
+        
         if not no_network: params["network"] = self.network
         return params
 
     
     async def _request(self, method, endpoint, params, no_network=False):
+        """Send a REST request.
+
+        Arguments:
+        method -- a REST method (GET, POST, etc)
+        endpoint -- URI endpoint to send request to
+        params -- dict of request parameters
+
+        Keywork arguments:
+        no_network -- boolean indicating whether to add a network field to params
+        """
 
         url = self.base_url + endpoint
         data = json.dumps(self._add_network_param(params, no_network))
 
         if method == POST:
-
-            if self.debug:
-                print("Sending POST request")
-                print(f"  URL: {url}")
-                print(f"  data: {data}")
+            logging.info(f"Sending POST request{NEWLINE}  URL: {url}{NEWLINE}  data: {data}")
             response = await self.client.post(url, content=data, headers=self.headers)
+        else:
+            raise ValueError(f"Unsupported REST method {method}")
 
         return response
 
     async def _request_no_network(self, method, endpoint, params):
+        """Send a REST request without specifying a network.
+
+        Arguments:
+        method -- a REST method (GET, POST, etc.)
+        endpoint -- URI endpoint to send request to
+        params -- dict of request parameters
+        """
 
         return await self._request(method, endpoint, params, no_network=True)
+
     
-
-    ### Endpoints ###
-    #
-    # In all of the requests below:
-    #   height_start and height_end must be non-negative integers with:
-    #     1 <= height_end - height_start <= constants.MOJONODE_MAX_HEIGHT_DIFF
-    #   puzzle_hash is a bytes32 hex encoded string
-    #   page is the page number to be returned. Mojonode paginates with constants.MOJONODE_PAGE_SIZE items per page
-
     async def get_coin_record_by_name(self, coin_id):
 
         params = {"name": coin_id}
@@ -76,10 +135,9 @@ class RpcClient():
 
     
     async def get_coin_records_by_names(self, coin_ids, height_start=None, height_end=None, include_spent_coins=False, page=1):
-
+        
         self._check_heights(height_start, height_end)
         
-        # coin_ids must be a list of bytes32 hex encoded strings (eg ["0xdeadbeef", "0xcafef00d"])
         params = {
             "start_height": height_start,
             "end_height": height_end,
@@ -96,12 +154,9 @@ class RpcClient():
 
     
     async def get_coin_records_by_parent_ids(self, parent_ids, height_start=None, height_end=None, include_spent_coins=False, page=1):
-
+        
         self._check_heights(height_start, height_end)
 
-        # Parent_ids is a list of coin parent IDs
-        # This call returns all coins who were created (confirmed_block_index) between blocks height_start and height_end (incl)
-        # and have one of the parent_ids as their parent coin ID
         params = {
             "start_height": height_start,
             "end_height": height_end,
@@ -156,11 +211,21 @@ class RpcClient():
 
     
     async def get_coin_records_by_hint(self, hint, height_start=None, height_end=None, include_spent_coins=False, page=1):
+        """Return coin records for coins hinted at.
+
+        For info on hints see https://docs.chia.net/conditions/?_highlight=hint#hinting
+        
+        Arguments:
+        hint -- a hint as a 32-byte hex encoded string
+
+        Keyword arguments:
+        height_start -- starting block height (incl)
+        height_end -- ending block height (excl)
+        include_spent_coins -- boolean indicating whether to include spent coins
+        page -- page to be returned (if applicable)
+        """
 
         self._check_heights(height_start, height_end)
-        
-        # hint is a bytes32 hex encoded string
-        # For info on hints see: https://docs.chia.net/conditions/?_highlight=hint#hinting
 
         params = {
             "start_height": height_start,
@@ -294,12 +359,18 @@ class RpcClient():
 
     
     async def get_fee_estimate(self, spend_bundle=None, cost=None, target_times=None):
+        """Returns a fee estimate
 
-        # Either spend_bundle or cost must be provided (but not both).
-        # For details on transaction costs in Chia see https://chialisp.com/costs
-        # target_times is a list of target times (>= 0 in seconds counting from now) for transaction inclusion.
-        # The response contains an 'estimate' field, which returns a list of fee
-        # estimates corresponding to the list of target times.
+        Either spend_bundle or cost must be provided (but not both).
+        For details on transaction costs in Chia see https://chialisp.com/costs
+
+        Keyword arguments:
+        spend_bundle -- spend bundle as a dict
+        cost -- cost of transaction
+        target_times -- list of target times for transaction inclusion in seconds counting from now
+
+        The response contains an 'estimate' field, which is a list of fee estimates corresponding to the list of target times specified.
+        """
 
         # Check that target times are well-defined
         if target_times is None:
@@ -349,14 +420,19 @@ class RpcClient():
 
         
     async def get_network_space(self, block_header_hash_start, block_header_hash_end):
+        """Returns the average Chia network space between two blocks.
+
+        Arguments:
+        block_header_hash_start -- block header hash of starting block
+        block_header_hash_end -- block header hash of ending block
+        
+        The network space value returned is given in bytes. To get the network space in EiB, the returned value needs to be divided by 2^60
+        """
 
         params = {
             "older_block_header_hash": block_header_hash_start,
             "newer_block_header_hash": block_header_hash_end
         }
-        
-        # The network space value returned is given in bytes.
-        # To get the network space in EiB, the returned value needs to be divided by 2^60
         
         if self.base_url == LOCALHOST:
             return await self._request(POST, "get_network_space", params)
@@ -365,9 +441,13 @@ class RpcClient():
 
 
     async def get_recent_signage_point_or_eos(self, signage_point_hash=None, challenge_hash=None):
+        """Return the most recent signage point for a given signage point hash or challenge hash.
+        
+        Either signage_point_hash or challenge_hash needs to be provided (but not both)
 
-        # Either signage point hash or challenge hash need to be provided (but not both)
-        # Whichever parameters is provided must be a bytes32 hex encoded string
+        signage_point_hash -- signage point hash as a 32-byte hex encoded string
+        challenge_hash -- challenge hash as a 32-byte hex encoded string
+        """
 
         # Check that either spend_bundle or cost is provided
         if signage_point_hash is None and challenge_hash is None:
@@ -378,9 +458,6 @@ class RpcClient():
             params["sp_hash"] = signage_point_hash
         else:
             params["challenge_hash"] = challenge_hash
-        
-        # The network space value returned is given in bytes.
-        # To get the network space in EiB, the returned value needs to be divided by 2^60
         
         if self.base_url == LOCALHOST:
             return await self._request(POST, "get_signage_point_or_eos", params)

@@ -1,9 +1,7 @@
-import os.path
+NEWLINE = "\n"
 
 GET = "GET"
 POST = "POST"
-
-CHIA_DIRECTORY = os.path.expanduser("~/.chia")
 
 MAINNET = "mainnet"
 TESTNET10 = "testnet10"

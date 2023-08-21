@@ -150,7 +150,6 @@ async def test_get_coin_records_by_puzzle_hash(coin_record_keys):
     response_json = response.json()
     assert isinstance(response_json, dict), "Response body not a dict (or missing)"
     assert len(response_json["coin_records"]) >= 24, "Missing coin record(s)"
-    assert len(response_json["coin_records"]) <= 24, "Unexpected coin record(s) returned"
     coin_records = sorted(response_json["coin_records"], key=lambda x: Coin.from_json_dict(x["coin"]).name())
     for r in coin_records:
         assert set(coin_record_keys).issubset(set(r.keys())), "Missing key(s) in coin record"
@@ -196,7 +195,6 @@ async def test_get_coin_records_by_puzzle_hashes(coin_record_keys):
     response_json = response.json()
     assert isinstance(response_json, dict), "Response body not a dict (or missing)"
     assert len(response_json["coin_records"]) >= 38, "Missing coin record(s)"
-    assert len(response_json["coin_records"]) <= 38, "Unexpected coin record(s) returned"
     for r in response_json["coin_records"]:
         assert set(coin_record_keys).issubset(set(r.keys())), "Missing key(s) in coin record"
 

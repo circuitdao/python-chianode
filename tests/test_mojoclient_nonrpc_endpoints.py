@@ -8,6 +8,7 @@ async def test_get_tx_by_name(transaction_keys, mempool_item_keys):
 
     mojonode = MojoClient()
 
+    # Test 1
     tx_id = "96753379426f0e0d9f35d40f6fc84473dd5a6a6dc531d26ab414d6b348f8d0d6"
 
     response = await mojonode.get_tx_by_name(tx_id)
@@ -17,9 +18,45 @@ async def test_get_tx_by_name(transaction_keys, mempool_item_keys):
     assert isinstance(response_json, dict), "Response body not a dict (or missing)"
     assert set(transaction_keys).issubset(set(response_json["transaction"].keys())), "Missing key(s) in mempool transaction"
     assert set(mempool_item_keys).issubset(set(response_json["transaction"]["mempool_item"].keys())), "Missing key(s) in mempool item"
-    # TODO: Test mempool items (see fixtures)
+    assert "b82f55abc524f7fa2b84bd1a32b26c94390b2b521b21c5790cf21cb99875fe96" in response_json["transaction"]["removals"]
+    assert "0090e72ac8a72259bdbe775a98224d18322c7ffb826f6845f646ec3fd283e4a1" in response_json["transaction"]["additions"]
+    assert response_json["transaction"]["state_updates"] == [
+        {'block_height': 4046556,
+         'created': '2023-08-05T23:59:42+00:00',
+         'reason': 'confirmed',
+         'state': 'C'},
+        {'block_height': 4046551,
+         'created': '2023-08-05T23:58:15+00:00',
+         'reason': None,
+         'state': 'A'}
+    ]
 
-async def test_get_uncurried_coin_spend():
+    # Test 2
+    tx_id = "23c712d8e0a5fb4bdf8ef54dfc075e9b34d8e9aefd8c1b74f8535b8980c59f14"
+
+    response = await mojonode.get_tx_by_name(tx_id)
+
+    assert response.status_code == httpx.codes.OK, "Response status not OK"
+    response_json = response.json()
+    assert isinstance(response_json, dict), "Response body not a dict (or missing)"
+    assert set(transaction_keys).issubset(set(response_json["transaction"].keys())), "Missing key(s) in mempool transaction"
+    assert set(mempool_item_keys).issubset(set(response_json["transaction"]["mempool_item"].keys())), "Missing key(s) in mempool item"
+    assert ['05bc36089431ae3c68db4bc7b2df7ae5952a383fcd9aceabcb327dc33f492f99'] == response_json["transaction"]["removals"]
+    assert "c091a0b2683abf5f1c0f2423f77f9a8d38660520d040d8f9f0ea320000fa0aad" in response_json["transaction"]["additions"]
+    assert "a4369541561d60ebabe5b60271ec3d9b34850a56c4c11bf005c4bcb6388bc050" in response_json["transaction"]["additions"]
+    assert response_json["transaction"]["state_updates"] == [
+        {'block_height': 4118117,
+         'created': '2023-08-21T11:31:42.143097+00:00',
+         'reason': 'confirmed',
+         'state': 'C'},
+        {'block_height': 4118115,
+         'created': '2023-08-21T11:31:10.858993+00:00',
+         'reason': None,
+         'state': 'A'}
+    ]
+
+    
+async def test_get_uncurried_coin_spend(uncurried_coin_spend_keys):
 
     mojonode = MojoClient()
 
@@ -30,13 +67,30 @@ async def test_get_uncurried_coin_spend():
     assert response.status_code == httpx.codes.OK, "Response status not OK"
     response_json = response.json()
     assert isinstance(response_json, dict), "Response body not a dict (or missing)"
-    # TODO: add further tests
+    assert set(uncurried_coin_spend_keys).issubset(set(response_json["uncurried_coin_spend"].keys())), "Missing key(s) in uncurried_coin_spend"
+    assert response_json["uncurried_coin_spend"] == {
+        'puzzle': {'a': ['85a35d9fa7068c004e3a6173cff6f6cb4c9e1d6e03de0ef43096a2170d0d6ae0382f83a833d61797964c20bb38d3bb2a'],
+                   'm': 'e9aaa49f45bad5c889b86ee3341550c155cfdd10c3a6757de618d20612fffd52'},
+        'solution': ['',
+                     ['01',
+                      ['33',
+                       '0833a81b2b85b4bdb2f1b2dbca0386636d3485cc5605a80433e3a2c2fdaa0f5a',
+                       '01'],
+                      ['33',
+                       'fa48420eba0456dd5128e359cf57ee7a9d10556d84aaf4ef05f245c78717ee3d',
+                       '00e8d449827f'],
+                      ['34', '5b8d80'],
+                      ['3c',
+                       '2db46db081105e8ba47e43abf570668090057f42f302a3ff3f25a11ab012fd9c']],
+                     '']
+    }
     
-async def test_get_transactions_for_coin():
+    
+async def test_get_transactions_for_coin(coin_transactions_keys):
 
     mojonode = MojoClient(mojo_timeout=None)
 
-    #coin_id = "0x2ca75063ff8753a84fd24ba9e980c473c411119bec04373ea63ef326e8e8a1ee" # -> has added by = null
+    # Test 1
     coin_id = "0xdbae6e3db31db2ee4a6def68708de334d33348cdf29b6dbc632d04bb89eb0b2f" # -> has added by and removed by = null
 
     response = await mojonode.get_transactions_for_coin(coin_id)
@@ -44,8 +98,35 @@ async def test_get_transactions_for_coin():
     assert response.status_code == httpx.codes.OK, "Response status not OK"
     response_json = response.json()
     assert isinstance(response_json, dict), "Response body not a dict (or missing)"
-    # TODO: some more asserts
+    assert set(coin_transactions_keys).issubset(set(response_json["coin_transactions"].keys())), "Missing key(s) in coin_transactions"
+    assert response_json["coin_transactions"]["added_by"] is None, "Incorrect added_by value"
+    assert response_json["coin_transactions"]["removed_by"] is None, "Incorrect removed_by value"
 
+    # Test 2
+    coin_id = "0x2ca75063ff8753a84fd24ba9e980c473c411119bec04373ea63ef326e8e8a1ee"
+
+    response = await mojonode.get_transactions_for_coin(coin_id)
+
+    assert response.status_code == httpx.codes.OK, "Response status not OK"
+    response_json = response.json()
+    assert isinstance(response_json, dict), "Response body not a dict (or missing)"
+    assert set(coin_transactions_keys).issubset(set(response_json["coin_transactions"].keys())), "Missing key(s) in coin_transactions"
+    assert response_json["coin_transactions"]["added_by"] is None, "Incorrect added_by value"
+    assert response_json["coin_transactions"]["removed_by"] == "e7174e4e850c7fe5a8f5c66757d370415647cbe10e4dc93554e89cb3bb491c55", "Incorrect removed_by value"
+
+    # Test 3
+    coin_id = "0xa4369541561d60ebabe5b60271ec3d9b34850a56c4c11bf005c4bcb6388bc050"
+
+    response = await mojonode.get_transactions_for_coin(coin_id)
+
+    assert response.status_code == httpx.codes.OK, "Response status not OK"
+    response_json = response.json()
+    assert isinstance(response_json, dict), "Response body not a dict (or missing)"
+    assert set(coin_transactions_keys).issubset(set(response_json["coin_transactions"].keys())), "Missing key(s) in coin_transactions"
+    assert response_json["coin_transactions"]["added_by"] == "23c712d8e0a5fb4bdf8ef54dfc075e9b34d8e9aefd8c1b74f8535b8980c59f14", "Incorrect added_by value"
+    assert response_json["coin_transactions"]["removed_by"] == "9057f72bc4dd124f7005cadc72c4be9317b1346469c3833a40dd206775e8c762", "Incorrect removed_by value"
+
+    
 async def test_get_query_schema(query_schema_keys, table_names):
 
     mojonode = MojoClient()
@@ -59,6 +140,7 @@ async def test_get_query_schema(query_schema_keys, table_names):
         assert set(query_schema_keys).issubset(set(t.keys())), "Missing key(s) in schema"
         assert set(table_names).issubset(set([t["name"] for t in response_json])), "Missing table name(s)"
 
+        
 async def test_query_coin_records(query_keys, coin_records_columns):
 
     mojonode = MojoClient(mojo_timeout=None)
@@ -77,6 +159,7 @@ async def test_query_coin_records(query_keys, coin_records_columns):
     assert len(response_json["data"]["name"]) >= 112, "Coin record(s) missing in coin_records table"
     assert len(response_json["data"]["name"]) <= 112, "Unexpected coin record(s) returned from coin_records table"
 
+    
 async def test_query_block_records_1(query_keys, block_records_columns):
 
     mojonode = MojoClient(mojo_timeout=None)
@@ -95,6 +178,7 @@ async def test_query_block_records_1(query_keys, block_records_columns):
     assert response_json["data"]["weight"][0] == "8263665968", "Incorrect weight in block_records table"
     assert response_json["data"]["cost"][0] == "2227382265", "Incorrect cost returned from block_records table"
 
+    
 async def test_query_block_records_2(query_keys, block_records_columns):
 
     mojonode = MojoClient(mojo_timeout=None)
@@ -118,6 +202,31 @@ async def test_query_block_records_2(query_keys, block_records_columns):
     assert response_json["data"]["aggregated_signature"][1] == None, "Aggregated signature not None"
     assert response_json["data"]["aggregated_signature"][2] == "0x8cced0b050bfb25403dacb9417ab556f28bbe17c0d2c91a9c81a3b1b549e95ba93130fde0703c62da0f0a13e3c7dc43216d3495a231d000f751954360ae2221f85a6f3955401fa6058eb3f900d87c88bbcfa1076ed89836e265f45c3ad8bd0de", "Incorrect aggregated signature"
 
+    
+async def test_query_coin_spends(query_keys, coin_spends_columns):
+
+    mojonode = MojoClient(mojo_timeout=None)
+
+    spent_block_height = 4000001
+
+    query = f"SELECT * FROM coin_spends WHERE spent_block_height = {spent_block_height}"
+    
+    response = await mojonode.query(query)
+
+    assert response.status_code == httpx.codes.OK, "Response status not OK"
+    response_json = response.json()
+    assert isinstance(response_json, dict), "Response body not a dict (or missing)"
+    assert set(query_keys).issubset(response_json.keys()), "Missing key(s) in query response"
+    assert response_json["status"] == "finished", "Status is not 'finished'"
+    assert response_json["errors"] is None, "Errors is not None"
+    assert set(coin_spends_columns).issubset(response_json["data"].keys()), "Column(s) missing in coin_spends table"
+    assert len(response_json["data"]["name"]) >= 79, "Coin spend(s) missing in coin_spends table"
+    assert len(response_json["data"]["name"]) <= 79, "Unexpected coin spend(s) returned from coin_spends table"
+    assert "0x65c2cfd645b3760bf9f06ef49190bbb05fa70808c13bbeb3db337316695fd358" in response_json["data"]["name"]
+    assert "1507421" in response_json["data"]["cost"]
+    assert response_json["data"]["spent_block_height"] == 79 * [spent_block_height]
+
+    
 async def test_query_transactions(query_keys, transactions_columns):
 
     mojonode = MojoClient(mojo_timeout=None)

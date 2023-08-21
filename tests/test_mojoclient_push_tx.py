@@ -8,10 +8,10 @@ async def test_push_tx():
 
     mojonode = MojoClient()
 
-    # Add spendbundle to broadcast before running test
-    tx = ""
+    # This test fails by default. To make it pass, insert a spend bundle to be broadcast
+    spend_bundle = ""
 
-    response = await mojonode.push_tx(tx)
+    response = await mojonode.push_tx(spend_bundle)
 
     assert response.status_code == httpx.codes.OK, "Response status not OK"
     response_json = response.json()

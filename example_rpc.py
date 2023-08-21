@@ -2,6 +2,7 @@ import asyncio
 from chianode.mojoclient import MojoClient
 from pprint import pprint
 
+
 async def main():
 
     mojonode = MojoClient()

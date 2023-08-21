@@ -108,6 +108,10 @@ def conds_keys():
     return ['cost', 'spends', 'reserve_fee', 'agg_sig_unsafe', 'height_absolute', 'seconds_absolute']
 
 @pytest.fixture
+def uncurried_coin_spend_keys():
+    return ['puzzle', 'solution']
+
+@pytest.fixture
 def spend_bundle_keys():
     return ['coin_spends', 'aggregated_signature']
 
@@ -124,12 +128,16 @@ def current_coin_keys():
     return ['coin', 'confirmed_block_index', 'spent_block_index', 'coinbase', 'timestamp', 'spent']
 
 @pytest.fixture
+def coin_transactions_keys():
+    return ['added_by', 'removed_by']
+
+@pytest.fixture
 def query_schema_keys():
     return ['columns', 'name', 'description']
 
 @pytest.fixture
 def table_names():
-    return ['coin_records', 'block_records', 'transactions']
+    return ['coin_records', 'block_records', 'coin_spends', 'transactions']
 
 @pytest.fixture
 def query_keys():
@@ -139,12 +147,16 @@ def query_keys():
 def coin_records_columns():
     return ['name', 'puzzle_hash', 'amount', 'confirmed_block_height', 'coinbase', 'parent_coin_name',
             'created_at', 'spent_at', 'puzzle', 'cost', 'solution', 'conditions', 'spent_block_height',
-            'memos', 'origin', 'confirmed_block_name', 'is_spent', 'spent_block_name']
+            'memos', 'confirmed_block_name', 'is_spent', 'spent_block_name']
 
 @pytest.fixture
 def block_records_columns():
     return ['hash', 'aggregated_signature', 'fees', 'cost', 'weight', 'created_at', 'data', 'prev_hash',
             'height', 'reverted']
+
+@pytest.fixture
+def coin_spends_columns():
+    return ['conditions', 'cost', 'name', 'puzzle', 'solution', 'spent_at', 'spent_block_height', 'spent_block_name']
 
 @pytest.fixture
 def transactions_columns():
