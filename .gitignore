@@ -1,0 +1,21 @@
+## gitignore file ##
+
+# non-pytest test files
+check_*.py
+
+# distribution directory
+dist/
+
+# environment variables
+.env
+
+# virtual environment
+venv/
+activate
+
+# python cache
+**/__pycache__/
+
+# temp files
+**/*~
+**/#*#
