@@ -40,26 +40,27 @@ class RpcClient():
         """
 
         self.base_url = base_url
-        if os.getenv('CHIA_ROOT') is None: raise NameError("Environment variable CHIA_ROOT not set")
-        with open(os.getenv('CHIA_ROOT') + "/config/config.yaml", "r") as file:
-            config_file = yaml.safe_load(file)
-            selected_network = config_file["full_node"]["selected_network"]
-        if selected_network == network:
-            self.network = network
-        else:
-            raise ValueError(f"Please connect the node running on localhost to {network}")
+
         if self.base_url == LOCALHOST:
+            if os.getenv('CHIA_ROOT') is None: raise NameError("Environment variable CHIA_ROOT not set")
+            with open(os.getenv('CHIA_ROOT') + "/config/config.yaml", "r") as file:
+                config_file = yaml.safe_load(file)
+                selected_network = config_file["full_node"]["selected_network"]
+            if selected_network == network:
+                self.network = network
+            else:
+                raise ValueError(f"Please connect the node running on localhost to {network}")
             self.headers = {"Content-Type": "application/json"}
             chia_root = "/".join(os.getenv('CHIA_ROOT').split("/")[:-1])
             self.cert = (f"{chia_root}/{self.network}/config/ssl/full_node/private_full_node.crt", f"{chia_root}/{self.network}/config/ssl/full_node/private_full_node.key")
         elif self.base_url == MOJONODE:
+            self.network= network
             self.headers = {"accept": "application/json", "Content-Type": "application/json"}
             self.cert = None
         else:
             raise ValueError(f"Unknown node provider. Base URL: {base_url}")
 
         self.timeout = timeout
-
         self.client = httpx.AsyncClient(base_url=self.base_url, http2=True, timeout=self.timeout, cert=self.cert, verify=False)
 
 

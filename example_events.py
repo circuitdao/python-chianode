@@ -4,11 +4,11 @@ from chianode.mojoclient import MojoClient
 
 async def main():
     
-    NUM_EVENTS_TO_READ = 0 # Number of events to read. Set to 0 to read events indefinitely
+    NUM_EVENTS_TO_READ = 10 # Number of events to read. Set to 0 to read events indefinitely
     
-    mojonodemojo = MojoClient()
+    mojonode = MojoClient()
     
-    stream = mojonodemojo.events()
+    stream = mojonode.events()
     stream_id = await anext(stream)
     print(f"CONNECTING TO STREAM ID {stream_id}")
     
@@ -19,7 +19,7 @@ async def main():
         
         # Close stream once the specified number of events has been read
         if c == NUM_EVENTS_TO_READ:
-            await mojonodemojo.close_stream(stream_id)
+            await mojonode.close_stream(stream_id)
 
 
 if __name__ == "__main__":
