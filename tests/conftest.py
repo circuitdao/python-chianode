@@ -1,14 +1,34 @@
 import pytest
 
+from chianode.utils import hexstr_to_bytes32
+
+from chianode import StandardClient, MojoClient
+from chianode.constants import NodeProvider
+
+NODE_PROVIDER = NodeProvider.MOJONODE
+
 GENESIS_BLOCK_HEADER_HASH = {
-    "mainnet": "0xd780d22c7a87c9e01d98b49a0910f6701c3b95015741316b3fda042e5d7b81d2"
+    "mainnet": hexstr_to_bytes32("0xd780d22c7a87c9e01d98b49a0910f6701c3b95015741316b3fda042e5d7b81d2")
 }
+
+def get_client(node_provider: NodeProvider, timeout=5):
+
+    if node_provider == NodeProvider.OFFICIALNODE:
+        return StandardClient(timeout=timeout)
+    elif node_provider == NodeProvider.MOJONODE:
+        return MojoClient(timeout=timeout)
+    else:
+        raise ValueError(f"Unknown node provider {node_provider.name}")
+
 
 #header_hash = "0x7357071bb77de2e98b9b1daf6b87f67dd8481fa144bcc03d331dba8664fc04f9" # BH 1 (transaction block w/o transactions)
 #header_hash = "0x058740efbd4bc33e23c46ff8b9f3207879e10aa96fe0d62ea976320f268b6f27" # BH 250005 (transaction block w/ transactions) -> additions and removals
 #header_hash = "0x9ec0447c9a4f5183f3235523aacf01fefb915f5ad90e2b5f1b45894412a4fb92" # BH 4030596 (not a transaction block)
 #header_hash = "0xc00bb14a70691fe4bcbfcd1682a0d4d5519bb5c019348e1b8b468a126a9b3e6d" # BH 4030597 (transaction block w/ transactions)
 
+@pytest.fixture
+def converted_mempool_item_required_keys():
+    return ["additions", "cost", "fee", "npc_result", "removals", "spend_bundle", "spend_bundle_name"]
 
 @pytest.fixture
 def coin_record_keys():
@@ -115,17 +135,17 @@ def uncurried_coin_spend_keys():
 def spend_bundle_keys():
     return ['coin_spends', 'aggregated_signature']
 
-@pytest.fixture
-def latest_singleton_spend_keys():
-    return ['latest_spend', 'current_coin']
+#@pytest.fixture
+#def latest_singleton_spend_keys():
+#    return ['latest_spend', 'current_coin']
 
-@pytest.fixture
-def latest_spend_keys():
-    return ['coin', 'puzzle_reveal', 'solution']
+#@pytest.fixture
+#def latest_spend_keys():
+#    return ['coin', 'puzzle_reveal', 'solution']
 
-@pytest.fixture
-def current_coin_keys():
-    return ['coin', 'confirmed_block_index', 'spent_block_index', 'coinbase', 'timestamp', 'spent']
+#@pytest.fixture
+#def current_coin_keys():
+#    return ['coin', 'confirmed_block_index', 'spent_block_index', 'coinbase', 'timestamp', 'spent']
 
 @pytest.fixture
 def coin_transactions_keys():

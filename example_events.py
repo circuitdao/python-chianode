@@ -9,7 +9,7 @@ async def main():
     mojonode = MojoClient()
     
     stream = mojonode.events()
-    stream_id = await anext(stream) # If you are running a Python version < 3.10, use stream.__anext__() instead
+    stream_id = await anext(stream) # If you are running a Python version < 3.10, do `await stream.__anext__()` instead
     print(f"CONNECTING TO STREAM ID {stream_id}")
     
     c = 0

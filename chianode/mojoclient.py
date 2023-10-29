@@ -2,61 +2,95 @@ import logging
 import httpx
 import uuid
 import json
-from datetime import datetime
-from .rpcclient import RpcClient
-from .constants import NEWLINE, GET, POST, MAINNET, LOCALHOST, MOJONODE, MOJONODE_RPC_ENDPOINTS
+from typing import Any, Dict, List, Optional, Tuple, cast
+
+from chia.types.blockchain_format.sized_bytes import bytes32
+from chia.types.coin_record import CoinRecord
+from chia.types.coin_spend import CoinSpend
+
+from .constants import NEWLINE, GET, POST, NodeProvider, Network, MOJONODE_STANDARD_ENDPOINTS, MOJONODE_NONSTANDARD_ENDPOINTS
+from .standardclient import StandardClient
+from .utils import hexstr_to_bytes32, coin_record_dict_backwards_compat, convert_tx, convert_uncurried_coin_spend, convert_coin_transactions
+
+
+from pprint import pprint
 
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
     
-class MojoClient(RpcClient):
+class MojoClient(StandardClient):
+    """Client to make RPCs to Mojonode.
 
-    def __init__(self, base_url=MOJONODE, network=MAINNET, mojo_timeout=10, rpc_timeout=5): # 5 second timeout is the httpx default
+    This client supports the remote procecure call (RPC) interface exposed by Mojonode.
+
+    Mojonode does not support all standard RPCs. To have access to all standard RPCs and Mojonode endpoints,
+    the StandardClient base class of a MojoClient instance can be connected to an official Chia full node running on localhost.
+    Using an official Chia full node running on localhost for standard RPCs can also be desirable for performance reasons.
+
+    For the Mojonode RPC interface documentation, see https://api.mojonode.com/docs.
+
+    Conventions for public method arguments and return values:
+      * The block at height_start is included, the block at height_end is excluded
+      * By default, spent coins are not included in the result to match the behaviour of the offical Chia full node RPC rather than Mojonode
+      * When querying Mojonode:
+         - height_start and height_end must be non-negative integers that satify
+             1 <= height_end - height_start <= constants.MOJONODE_MAX_HEIGHT_DIFF (currently 100)
+         - data returned is not sorted
+         - data returned is paginated
+         - the page parameter can be used to specify which page to return, starting from 1
+         - by default, the page 1 is returned
+         - the number of items per page is specified by constants.MOJONODE_PAGE_SIZE (currently 50)
+      *  The page parameter is ignored when querying nodes that don't support pagination.
+    """
+
+    def __init__(
+            self,
+            network: Network = Network.MAINNET,
+            timeout: Optional[int] = 10,
+            standard_node_provider: NodeProvider = NodeProvider.MOJONODE,
+            standard_node_timeout: Optional[int] = 5 # 5 second timeout is the httpx default
+    ): 
         """Initialize a MojoClient instance.
 
         Keywork arguments:
-        base_url -- the URL (exluding endpoint) for RPCs
-        network -- the network to query
-        mojo_timeout -- timeout in seconds for requests to Mojonode
-        rpc_timeout -- timeout in seconds for RPCs
+        network -- network which the node provider is connected to. Default is Network.MAINNET
+        timeout -- timeout in seconds for requests to Mojonode. Set to None for no timeout. Default is 10 seconds
+        standard_node_provider -- node provider for standard remote procecure calls (RPCs). Default is NodeProvider.MOJONODE
+        standard_node_timeout -- timeout in seconds for standard RPCs. Default is 5 seconds. Set to None for no timeout. Gets overwritten by the timeout argument if Mojonode is the standard node provider.
         """
 
-        if base_url == MOJONODE: rpc_timeout = mojo_timeout # Override RPC timeout if Mojonode used for RPC calls
-        RpcClient.__init__(self, base_url=base_url, network=MAINNET, timeout=rpc_timeout)
+        if timeout is not None and timeout < 0: ValueError("Timeout must be None or a non-negative integer")
+        if standard_node_provider == NodeProvider.MOJONODE: standard_node_timeout = timeout # Override standard node timeout if Mojonode used as standard node provider
+        StandardClient.__init__(self, node_provider=standard_node_provider, network=Network.MAINNET, timeout=standard_node_timeout)
         
         self.mojo_headers = {"accept": "application/json", "Content-Type": "application/json"}
-        self.mojo_timeout = mojo_timeout
+        self.mojo_timeout = timeout
 
         self._streams = {}
-
-        self.mojonode_nonrpc_endpoints = [
-            "/get_tx_by_name",
-            "/get_uncurried_coin_spend",
-            "/get_transactions_for_coin",
-            "/get_query_schema",
-            "/query",
-            "/events",
-            "/get_latest_singleton_spend"
-        ]
         
-        if self.base_url == MOJONODE:
+        if standard_node_provider == NodeProvider.MOJONODE:
             self.mojoclient = self.client
         else:
-            self.mojoclient = httpx.AsyncClient(base_url=MOJONODE, http2=True, timeout=self.mojo_timeout)
+            self.mojoclient = httpx.AsyncClient(base_url=NodeProvider.MOJONODE.base_url(), http2=True, timeout=self.mojo_timeout)
 
             
-    async def _mojo_request(self, method, endpoint, params, no_network=False):
+    async def _mojo_request(self, method: str, endpoint: str, params: dict, no_network: bool =False, timeout: Optional[int] =-1):
         """Send a REST request to Mojonode.
 
-        Keyword arguments:
+        Arguments:
         method -- a REST method (GET, POST, etc)
         endpoint -- URI endpoint to send request to
         params -- dict of request parameters
+
+        Keyword arguments:
         no_network -- boolean indicating whether to add a network field to params
+        timeout -- request timeout in seconds
         """
 
-        url = MOJONODE + endpoint
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
+
+        url = NodeProvider.MOJONODE.base_url() + "/" + endpoint
         data = json.dumps(self._add_network_param(params, no_network))
 
         if method == POST:
@@ -68,113 +102,184 @@ class MojoClient(RpcClient):
         return response
 
     
-    async def _mojo_request_no_network(self, method, endpoint, params):
+    async def _mojo_request_no_network(self, method: str, endpoint: str, params: dict, timeout: Optional[int] =-1):
         """Send a REST request to Mojonode without specifying a network
 
-        Keyword arguments:
+        Arguments:
         method -- a REST method (GET, POST, etc)
         endpoint -- URI endpoint to send request to
         params -- dict of request parameters
+
+        Keyword arguments:
+        timeout -- request timeout in seconds
         """
+
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
 
         return await self._mojo_request(method, endpoint, params, no_network=True)
 
 
-    async def get_tx_by_name(self, tx_id):
+    async def get_tx_by_name(self, tx_id: bytes32, timeout: Optional[int] =-1) -> Dict[str, Any]:
         """Transaction by transaction ID.
 
         Arguments:
         tx_id -- a spend bundle name
 
+        Keyword arguments:
+        timeout -- request timeout in seconds
+
         Returns the transaction (spend bundle) corresponding to the transaction ID (spend bundle name).
         Since spend bundles are mempool objects, Mojonode may occasionally fail to record a spend, resulting in missing data.
         """
 
-        params = {"name": tx_id}
-        return await self._mojo_request(POST, "get_tx_by_name", params)
+        params = {"name": tx_id.hex()}
+
+        transaction = (await self._mojo_request(POST, "get_tx_by_name", params)).json()["transaction"]
+
+        return convert_tx(transaction)
 
     
-    async def get_uncurried_coin_spend(self, coin_id):
-        """Uncurried coin spend for given coin ID."""
+    async def get_uncurried_coin_spend(self, coin_id: bytes32, timeout: Optional[int] =-1) -> Dict[str, Any]:
+        """Uncurried coin spend for given coin ID.
+        
+        Arguments:
+        coin_id -- a coin ID (coin name)
+        
+        Keyword arguments:
+        timeout -- request timeout in seconds
 
-        params = {"name": coin_id}
-        return await self._mojo_request(POST, "get_uncurried_coin_spend", params)
+        Returns a dict with modified keys in the 'puzzle' sub-dict returned by Mojonode.
+        """
+
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
+
+        params = {"name": coin_id.hex()}
+
+        uncurried_coin_spend = (await self._mojo_request(POST, "get_uncurried_coin_spend", params)).json()["uncurried_coin_spend"]
+
+        return convert_uncurried_coin_spend(uncurried_coin_spend)
 
     
-    async def get_transactions_for_coin(self, coin_id):
+    async def get_transactions_for_coin(self, coin_id: bytes32, timeout: Optional[int] =-1) -> Dict[str, bytes32]:
         """Transactions in which the specified coin was created and spent.
 
         Arguments:
-        coin_id -- coin name (coin ID) as a byte-32 hex encoded string
+        coin_id -- a coin ID (coin name)
 
-        Returns the transaction IDs (spend bundle names) as 32-byte hex encoded stings of the spend bundles that created ('added_by') and spent ('removed_by') the coin.
-        Since spend bundles are mempool objects, Mojonode may occasionally fail to record a spend, resulting in missing 'added_by' or 'removed_by' data.
+        Keyword arguments:
+        timeout -- request timeout in seconds        
+
+        Returns transaction IDs (spend bundle names) of the spend bundles that created ('added_by') and spent ('removed_by') the coin, respectively.
+        Since transactions are mempool objects, Mojonode may occasionally fail to record a transaction, resulting in missing 'added_by' or 'removed_by' data.
         """
 
-        params = {"name": coin_id}
-        return await self._mojo_request(POST, "get_transactions_for_coin", params)
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
 
-    
-    async def get_query_schema(self):
-        """Mojonode SQL database schema."""
+        params = {"name": coin_id.hex()}
+
+        coin_transactions = (await self._mojo_request(POST, "get_transactions_for_coin", params)).json()["coin_transactions"]
         
-        return await self._mojo_request_no_network(POST, "get_query_schema", {})
+        return convert_coin_transactions(coin_transactions)
 
     
-    async def query(self, query):
+    async def get_query_schema(self, timeout: Optional[int] =-1) -> List[Dict[str, Any]]:
+        """Mojonode SQL database schema.
+
+        Keyword arguments:
+        timeout -- request timeout in seconds
+        """
+
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
+
+        query_schema = (await self._mojo_request_no_network(POST, "get_query_schema", {})).json()
+        
+        return cast(List[Dict[str, Any]], query_schema)
+
+    
+    async def query(self, query, timeout: Optional[int] =-1) -> dict:
         """Queries Mojonode SQL database for Chia blockchain data.
+
+        Depending on the complexity of the query, this call make take a long time to return a response.
+        It may be necessary to use a timeout greater than the default, or even setting timeout = None.
 
         Arguments:
         query -- a valid SQL query as a string
+
+        Keyword arguments:
+        timeout -- request timeout in seconds
         """
 
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
+
         params = {"query": query}
-        return await self._mojo_request_no_network(POST, "query", params)
+
+        response = (await self._mojo_request_no_network(POST, "query", params)).json()
+        
+        return response
 
     
-    async def get_latest_singleton_spend(self, address):
-        """Latest singleton spend for given address"""
+    async def get_latest_singleton_spend(self, address: str, timeout: Optional[int] =-1) -> Tuple[CoinSpend, CoinRecord]:
+        """Latest singleton spend and current coin for given address (launcher ID)
+
+        Arguments:
+        address -- address of a singleton
+
+        Keyword arguments:
+        timeout -- request timeout in seconds
+        """
+
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
 
         params = {"address": address}
-        return await self._mojo_request(POST, "get_latest_singleton_spend", params)
 
-    
-    async def get_routes(self):
-        """Available endpoints"""
-
-        if self.base_url == LOCALHOST:
-            response = await self._request(POST, "get_routes", {})
-            endpoints = response.json()["routes"] + self.mojonode_nonrpc_endpoints
-        elif self.base_url == MOJONODE:
-            endpoints = MOJONODE_RPC_ENDPOINTS + self.mojonode_nonrpc_endpoints
-
-        # Return available endpoints as HTTP response
-        response_data = {
-            "routes": endpoints,
-            "success": True
-        }
-        headers = {"Content-Type": "application/json"}
-        return httpx.Response(200, content=json.dumps(response_data).encode("utf-8"), headers=headers)
-
-    
-    async def close_stream(self, stream_id):
-        """Closes an event stream."""
+        response = (await self._mojo_request(POST, "get_latest_singleton_spend", params)).json()
         
+        return (
+            CoinSpend.from_json_dict(response["latest_spend"]),
+            CoinRecord.from_json_dict(coin_record_dict_backwards_compat(response["current_coin"]))
+        )
+         
+    
+    async def get_routes(self, timeout: Optional[int] =-1) -> List[str]:
+        """Available endpoints
+
+        Keyword arguments:
+        timeout -- request timeout in seconds
+        """
+
+        if timeout is not None and timeout < 0: timeout = self.mojo_timeout
+
+        if self.node_provider == NodeProvider.OFFICIALNODE:
+            routes = (await self._request(POST, "get_routes", {})).json()["routes"]
+            endpoints = routes + MOJONODE_NONSTANDARD_ENDPOINTS
+        elif self.node_provider == NodeProvider.MOJONODE:
+            endpoints = MOJONODE_STANDARD_ENDPOINTS + MOJONODE_NONSTANDARD_ENDPOINTS
+
+        return endpoints
+
+    
+    async def close_stream(self, stream_id: str):
+        """Closes an event stream.
+
+        Arguments:
+        stream_id -- ID of the event stream to close
+        """
+
         if stream_id in self._streams.keys():
             self._streams.pop(stream_id)
         else:
             raise ValueError(f"No stream with ID {stream_id} to close")
-    
-    
-    async def events(self, for_object=None, from_ts="$", filters=""):
+
+        
+    async def events(self, for_object: str =None, from_ts: str ="$", filters=""):
         """Stream events.
 
-        Mojonode disconnects event streams every 5 mins, so that the client needs to reconnect.
+        Mojonode disconnects event streams every 5 mins. This function client automatically reconnects.
         
         Keyword arguments:
         for_object -- only stream events for specified object (coin, block, transaction). Streams all events if set to None
-        from_ts -- only stream events from the given timestamp onwards. Note that timestamps are unique
-        filters -- only stream events that pass the filter. See Mojonode documentation for details
+        from_ts -- only stream events from the given timestamp (Unix epoch in seconds) onwards ("$" to start from now). Timestamps are unique
+        filters -- only stream events that pass the filter. See Mojonode documentation for details: https://api.mojonode.com/docs#/mojonode/mojonode_chiadata_views_subscribe
         """
 
         if for_object is not None:
@@ -191,9 +296,9 @@ class MojoClient(RpcClient):
             try:
 
                 # Context manager for Mojonode event stream
-                async with self.mojoclient.stream(GET, MOJONODE + "events?" + params, timeout=None) as response:
+                async with self.mojoclient.stream(GET, NodeProvider.MOJONODE.base_url() + "/events?" + params, timeout=None) as response:
 
-                    logging.debug(f"Connected to stream ID {stream_id}")
+                    logging.debug(f"Connected to stream. Assigned stream ID {stream_id}")
 
                     try:
                             async for data in response.aiter_lines():

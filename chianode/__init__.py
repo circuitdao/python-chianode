@@ -1,2 +1,2 @@
-from .rpcclient import RpcClient
+from .standardclient import StandardClient
 from .mojoclient import MojoClient

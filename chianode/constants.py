@@ -1,18 +1,31 @@
+from enum import Enum
+
 NEWLINE = "\n"
 
 GET = "GET"
 POST = "POST"
 
-MAINNET = "mainnet"
-TESTNET10 = "testnet10"
+class Network(Enum):
+    MAINNET = 1
+    TESTNET10 = 2
+    SIMULATOR0 = 3
 
-LOCALHOST = "https://localhost:8555/"
-MOJONODE = "https://api.mojonode.com/"
+class NodeProvider(Enum):
+    OFFICIALNODE = 1
+    MOJONODE = 2 
+
+    def base_url(self) -> str:
+        if self.name == "OFFICIALNODE":
+            return "https://localhost"
+        elif self.name == "MOJONODE":
+            return "https://api.mojonode.com"
+        else:
+            raise ValueError(f"Base URL for {self.name} not defined")
 
 MOJONODE_EVENT_OBJECTS = ["coin", "block", "transaction"]
 MOJONODE_PAGE_SIZE = 50
 MOJONODE_MAX_HEIGHT_DIFF = 100
-MOJONODE_RPC_ENDPOINTS = [
+MOJONODE_STANDARD_ENDPOINTS = [
     "/get_coin_record_by_name",
     "/get_coin_records_by_name",
     "/get_coin_records_by_parent_ids",
@@ -33,4 +46,19 @@ MOJONODE_RPC_ENDPOINTS = [
     "/get_initial_freeze_period",
     "/healthz",
     "/push_tx"
+]
+MOJONODE_NONSTANDARD_ENDPOINTS = [
+    "/get_tx_by_name",
+    "/get_uncurried_coin_spend",
+    "/get_transactions_for_coin",
+    "/get_query_schema",
+    "/query",
+    "/events",
+    "/get_latest_singleton_spend"
+]
+UNSUPPORTED_STANDARD_ENDPOINTS = [
+    "/get_connections",
+    "/open_connection",
+    "/close_connection",
+    "/stop_node"
 ]
