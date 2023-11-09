@@ -2,7 +2,6 @@
 
 # non-pytest test files
 check_*.py
-test_*.py
 
 # distribution directory
 dist/
