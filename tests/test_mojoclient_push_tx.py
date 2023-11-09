@@ -1,5 +1,5 @@
 from pytest import fixture
-from conftest import NODE_PROVIDER, get_client
+from tests.conftest import NODE_PROVIDER, get_client
 
 from chia.types.spend_bundle import SpendBundle
 

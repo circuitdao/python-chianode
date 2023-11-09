@@ -1,5 +1,5 @@
 from pytest import fixture
-from conftest import NODE_PROVIDER, GENESIS_BLOCK_HEADER_HASH, get_client
+from tests.conftest import NODE_PROVIDER, GENESIS_BLOCK_HEADER_HASH, get_client
 
 from typing import Any, Dict, List, Optional, Tuple
 
