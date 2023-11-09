@@ -13,7 +13,7 @@ GENESIS_BLOCK_HEADER_HASH = {
 
 def get_client(node_provider: NodeProvider, timeout=5):
 
-    if node_provider == NodeProvider.OFFICIALNODE:
+    if node_provider == NodeProvider.FULLNODE:
         return StandardClient(timeout=timeout)
     elif node_provider == NodeProvider.MOJONODE:
         return MojoClient(timeout=timeout)

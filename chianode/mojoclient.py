@@ -249,7 +249,7 @@ class MojoClient(StandardClient):
 
         if timeout is not None and timeout < 0: timeout = self.mojo_timeout
 
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             routes = (await self._request(POST, "get_routes", {})).json()["routes"]
             endpoints = routes + MOJONODE_NONSTANDARD_ENDPOINTS
         elif self.node_provider == NodeProvider.MOJONODE:

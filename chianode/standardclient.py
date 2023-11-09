@@ -28,17 +28,21 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 class StandardClient():
     """Client to make standard RPCs to a Chia node.
 
-    This client supports the remote procecure calls (RPCs) of the official Chia full node.
-    There are some minor variations - both in terms of arguments and return values  - vs the official interace.
-
-    The client can connect to either an official Chia full node running on localhost or Mojonode as node provider.
+    This client supports the remote procecure calls (RPCs) of the official Chia full node (the 'standard' RPC interface),
+    and can connect to either an official Chia full node running on localhost or Mojonode as node provider.
 
     Official Chia full node RPC interface documentation:
     * https://docs.chia.net/full-node-rpc (includes modifications for command line use)
     * https://github.com/Chia-Network/chia-blockchain/blob/main/chia/rpc/full_node_rpc_client.py
+    Note that there are some minor variations in the StandardClient vs the official full node interface.
+
+    To install the official Chia full node, download the latest version from https://www.chia.net/downloads/,
+    and follow the install instructions on https://github.com/Chia-Network/chia-blockchain/wiki/INSTALL
 
     Mojonode RPC interface documentation:
     * https://api.mojonode.com/docs
+
+    Mojonode is an online-only service. There is no need to install anything.
     
     Conventions for public method arguments and return values:
       * The block at height_start is included, the block at height_end is excluded
@@ -56,21 +60,21 @@ class StandardClient():
 
     def __init__(
             self,
-            node_provider: NodeProvider = NodeProvider.OFFICIALNODE,
+            node_provider: NodeProvider = NodeProvider.FULLNODE,
             network: Network = Network.MAINNET,
             timeout: Optional[int] = 5 # 5 second timeout is httpx default
     ): 
         """Initialize a StandardClient instance.
 
         Keywork arguments:
-        node_provider -- node provider for standard RPCs. Default is NodeProvider.OFFICIALNODE
+        node_provider -- node provider for standard RPCs. Default is NodeProvider.FULLNODE
         network -- network which the node provider is connected to. Default is Network.MAINNET
         timeout -- timeout in seconds for requests to the node provider. Default is 10 seconds. Set to None for no timeout
         """
 
         self.node_provider = node_provider
 
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             if os.getenv('CHIA_ROOT') is None: raise NameError("Environment variable CHIA_ROOT not set")
             chia_root = os.getenv("CHIA_ROOT")
             with open(chia_root + "/config/config.yaml", "r") as file:
@@ -214,7 +218,7 @@ class StandardClient():
         }
         if self.node_provider == NodeProvider.MOJONODE:
             params["page"] = page
-        elif self.node_provider == NodeProvider.OFFICIALNODE:
+        elif self.node_provider == NodeProvider.FULLNODE:
             if height_start is None: params.pop("start_height")
             if height_end is None: params.pop("end_height")
 
@@ -245,7 +249,7 @@ class StandardClient():
         }
         if self.node_provider == NodeProvider.MOJONODE:
             params["page"] = page
-        elif self.node_provider == NodeProvider.OFFICIALNODE:
+        elif self.node_provider == NodeProvider.FULLNODE:
             if height_start is None: params.pop("start_height")
             if height_end is None: params.pop("end_height")
 
@@ -276,7 +280,7 @@ class StandardClient():
         }
         if self.node_provider == NodeProvider.MOJONODE:
             params["page"] = page
-        elif self.node_provider == NodeProvider.OFFICIALNODE:
+        elif self.node_provider == NodeProvider.FULLNODE:
             if height_start is None: params.pop("start_height")
             if height_end is None: params.pop("end_height")
 
@@ -308,7 +312,7 @@ class StandardClient():
         }
         if self.node_provider == NodeProvider.MOJONODE:
             params["page"] = page
-        elif self.node_provider == NodeProvider.OFFICIALNODE:
+        elif self.node_provider == NodeProvider.FULLNODE:
             if height_start is None: params.pop("start_height")
             if height_end is None: params.pop("end_height")
 
@@ -353,7 +357,7 @@ class StandardClient():
         }
         if self.node_provider == NodeProvider.MOJONODE:
             params["page"] = page
-        elif self.node_provider == NodeProvider.OFFICIALNODE:
+        elif self.node_provider == NodeProvider.FULLNODE:
             if height_start is None: params.pop("start_height")
             if height_end is None: params.pop("end_height")
 
@@ -466,7 +470,7 @@ class StandardClient():
 
         if timeout is not None and timeout < 0: timeout = self.timeout
 
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             return (await self._request(POST, "get_block_count_metrics", {}, timeout=timeout)).json()["metrics"]
         else:
             raise ValueError(f"Endpoint get_block_count_metrics not supported by node provider ({self.node_provider})")
@@ -519,7 +523,7 @@ class StandardClient():
 
         if timeout < 0: timeout = self.timeout
         
-        if not self.node_provider == NodeProvider.OFFICIALNODE:
+        if not self.node_provider == NodeProvider.FULLNODE:
             raise ValueError(f"Endpoint get_all_mempool_items not supported by node provider ({self.node_provider})")
             
         mempool_items = (await self._request(POST, "get_all_mempool_items", {}, timeout=timeout)).json()["mempool_items"]
@@ -543,7 +547,7 @@ class StandardClient():
 
         if timeout is not None and timeout < 0: timeout = self.timeout
         
-        if not self.node_provider == NodeProvider.OFFICIALNODE and include_pending == True:
+        if not self.node_provider == NodeProvider.FULLNODE and include_pending == True:
             raise ValueError(f"Inclusion of pending items for endpoint get_mempool_item_by_tx_id is not supported by node provider ({self.node_provider})")
         
         params = {
@@ -622,7 +626,7 @@ class StandardClient():
             params["cost"] = cost
 
         # Send request
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             return (await self._request(POST, "get_fee_estimate", params, timeout=timeout)).json()
         else:
             raise ValueError(f"Endpoint get_fee_estimate not supported by node provider ({self.node_provider})")
@@ -631,17 +635,19 @@ class StandardClient():
     async def push_tx(self, spend_bundle: SpendBundle, timeout: Optional[int] =-1) -> Dict[str, Any]:
 
         if timeout is not None and timeout < 0: timeout = self.timeout
-        
+
         params = {"spend_bundle": spend_bundle.to_json_dict()}
+
+        response = (await self._request(POST, "push_tx", params, timeout=timeout)).json()
         
-        return await self._request(POST, "push_tx", params, timeout=timeout)
+        return response
 
     
     async def get_network_info(self, timeout: Optional[int] =-1) -> dict:
 
         if timeout is not None and timeout < 0: timeout = self.timeout
 
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             response = (await self._request(POST, "get_network_info", {}, timeout=timeout)).json()
             response.pop("success")
             return response
@@ -669,7 +675,7 @@ class StandardClient():
             "newer_block_header_hash": block_header_hash_end.hex()
         }
         
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             return cast(int, (await self._request(POST, "get_network_space", params, timeout=timeout)).json()["space"])
         else:
             raise ValueError(f"Endpoint get_network_space not supported by node provider ({self.node_provider})")
@@ -704,7 +710,7 @@ class StandardClient():
         else:
             params = {"challenge_hash": challenge_hash.hex()}
         
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             response = (await self._request(POST, "get_recent_signage_point_or_eos", params, timeout=timeout)).json()
             if response["success"] == False or "error" in response.keys():
                 return None
@@ -728,7 +734,7 @@ class StandardClient():
 
         if timeout is not None and timeout < 0: timeout = self.timeout
         
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             headers = (await self._request(POST, "get_unfinished_block_headers", {}, timeout=timeout)).json()["headers"]
             return [UnfinishedHeaderBlock.from_json_dict(h) for h in headers]
         else:
@@ -744,7 +750,7 @@ class StandardClient():
 
         if timeout is not None and timeout < 0: timeout = self.timeout
         
-        if self.node_provider == NodeProvider.OFFICIALNODE:
+        if self.node_provider == NodeProvider.FULLNODE:
             return sorted([r for r in (await self._request(POST, "get_routes", {}, timeout=timeout)).json()["routes"] if r not in UNSUPPORTED_STANDARD_ENDPOINTS])
         elif self.node_provider == NodeProvider.MOJONODE:
             return sorted(MOJONODE_STANDARD_ENDPOINTS)

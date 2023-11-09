@@ -11,11 +11,11 @@ class Network(Enum):
     SIMULATOR0 = 3
 
 class NodeProvider(Enum):
-    OFFICIALNODE = 1
+    FULLNODE = 1
     MOJONODE = 2 
 
     def base_url(self) -> str:
-        if self.name == "OFFICIALNODE":
+        if self.name == "FULLNODE":
             return "https://localhost"
         elif self.name == "MOJONODE":
             return "https://api.mojonode.com"
